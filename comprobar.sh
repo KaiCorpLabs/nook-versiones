@@ -44,25 +44,33 @@ origen, ruta = sys.argv[1], sys.argv[2]
 m = json.load(open(ruta))
 
 # Se baja con curl (con un User-Agent propio): urllib de Python tropieza con
-# algunos proxies, que lo frenan. Hasta tres intentos por fichero, unos pocos
-# a la vez.
+# algunos proxies, que lo frenan. Dos a la vez y hasta tres intentos por
+# fichero. Sin tope fijo por fichero, que con una conexión lenta cortaba los
+# grandes: se deja un fichero solo si va a menos de 1 KB/s durante un minuto
+# (y, en cualquier caso, a los 15 minutos).
 UA = "nook-comprobar/1 (+https://github.com/KaiCorpLabs/nook-versiones)"
 
 def sha(path):
     for intento in range(3):
-        r = subprocess.run(["curl", "-fsS", "--max-time", "60", "-A", UA, "-H", "Cache-Control: no-cache", f"{origen}/{path}"],
+        r = subprocess.run(["curl", "-fsS", "--connect-timeout", "20", "--speed-limit", "1024", "--speed-time", "60",
+                            "--max-time", "900", "-A", UA, "-H", "Cache-Control: no-cache", f"{origen}/{path}"],
                            capture_output=True)
         if r.returncode == 0:
             return "sha256:" + hashlib.sha256(r.stdout).hexdigest()
-        time.sleep(1 + intento)
+        time.sleep(2 + 3 * intento)
     return None
 
 quiero = dict(m["web"])
 agente = m.get("agente")
 if agente:
     quiero["agente/nook-agent.mjs"] = agente["nook-agent.mjs"]
-with ThreadPoolExecutor(max_workers=4) as pool:
-    tengo = dict(zip(quiero, pool.map(sha, quiero)))
+print(f"Bajando {len(quiero)} ficheros…", flush=True)
+tengo = {}
+with ThreadPoolExecutor(max_workers=2) as pool:
+    for n, (p, h) in enumerate(zip(quiero, pool.map(sha, quiero)), 1):
+        tengo[p] = h
+        if n % 25 == 0 and n < len(quiero):
+            print(f"  {n} de {len(quiero)}", flush=True)
 
 fallan = [p for p, h in tengo.items() if h is None]
 malos = [p for p, h in tengo.items() if h is not None and h != quiero[p]]

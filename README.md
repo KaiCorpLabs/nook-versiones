@@ -22,8 +22,8 @@ cd nook-versiones
 
 Pregunta al servidor qué versión es, toma su manifiesto de esta carpeta,
 comprueba la firma (si tienes [cosign](https://docs.sigstore.dev/cosign/system_config/installation/))
-y baja cada fichero de la web y nook-agent para compararlos. Hace falta curl
-y python3.
+y baja cada fichero de la web y nook-agent para compararlos (unos 8 MB: con
+una conexión lenta, unos minutos). Hace falta curl y python3.
 
 ## Qué hay
 
