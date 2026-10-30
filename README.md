@@ -1,7 +1,8 @@
 # Versiones de Nook
 
 El manifiesto firmado de cada versión publicada de Nook: qué imagen es
-(`ghcr.io/ulzuhan/nook`, por digest), de qué commit sale y el SHA-256 de cada
+(por digest: `ghcr.io/kaicorplabs/nook` desde la 0.1.29, `ghcr.io/ulzuhan/nook`
+hasta la 0.1.28), de qué commit sale y el SHA-256 de cada
 fichero de la web que sirve y de nook-agent. Está aquí, fuera de cualquier
 servidor de Nook, para que se pueda comprobar que un Nook sirve lo publicado
 y no otra cosa.
@@ -48,7 +49,7 @@ La firma de la imagen va en el registro, junto a ella (de momento el paquete
 es privado: hace falta acceso a él para comprobarla):
 
 ```bash
-cosign verify --key cosign.pub ghcr.io/ulzuhan/nook@sha256:<digest del manifiesto>
+cosign verify --key cosign.pub ghcr.io/kaicorplabs/nook@sha256:<digest del manifiesto>   # hasta la 0.1.28, ghcr.io/ulzuhan/nook
 ```
 
 Los ficheros de la web, uno a uno: `curl -s https://<Nook>/<ruta> | shasum -a 256`
