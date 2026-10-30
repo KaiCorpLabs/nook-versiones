@@ -5,9 +5,15 @@
 #
 # Lee la versión que dice el servidor (/version.json), toma su manifiesto de
 # esta carpeta (versiones/<versión>.json, que llega de GitHub, no del
-# servidor), comprueba su firma con cosign.pub si tienes cosign, y baja cada
-# fichero de la web y nook-agent para compararlo con el SHA-256 del
-# manifiesto. Sale con 0 si todo casa y con 1 si algo no (o no se pudo bajar).
+# servidor), comprueba su firma si tienes cosign, y baja cada fichero de la
+# web y nook-agent para compararlo con el SHA-256 del manifiesto. Sale con 0
+# si todo casa y con 1 si algo no (o no se pudo bajar).
+#
+# La firma: desde la 0.1.32 la pone la CI de Nook sin clave, y lo que se
+# comprueba es quién firmó (IDENTIDAD, abajo: el fichero de la CI en la
+# etiqueta de esa versión). Hasta la 0.1.31, y si alguna vez la CI no puede,
+# firma quien publica con su clave: cosign.pub. El bundle dice cuál de las
+# dos es.
 #
 # Hace falta curl y python3; cosign, para la firma (si no está, lo dice y
 # sigue con los hashes).
@@ -23,8 +29,15 @@ M="$AQUI/versiones/$VERSION.json"
 [ -f "$M" ] || { echo "El servidor dice que es la $VERSION, y aquí no hay manifiesto de esa versión (¿git pull?)." >&2; exit 1; }
 echo "$ORIGEN dice que es la $VERSION."
 
+IDENTIDAD="https://github.com/KaiCorpLabs/nook/.github/workflows/docker.yml@refs/tags/v$VERSION"
+EMISOR="https://token.actions.githubusercontent.com"
 if command -v cosign >/dev/null 2>&1 && [ -f "$M.sigstore.json" ]; then
-  if cosign verify-blob --key "$AQUI/cosign.pub" --bundle "$M.sigstore.json" "$M" >/dev/null 2>&1; then
+  if python3 -c 'import json,sys; sys.exit(0 if "publicKey" in json.load(open(sys.argv[1]))["verificationMaterial"] else 1)' "$M.sigstore.json"; then
+    QUIEN=(--key "$AQUI/cosign.pub")
+  else
+    QUIEN=(--certificate-identity "$IDENTIDAD" --certificate-oidc-issuer "$EMISOR")
+  fi
+  if cosign verify-blob "${QUIEN[@]}" --bundle "$M.sigstore.json" "$M" >/dev/null 2>&1; then
     echo "Firma del manifiesto: buena."
   else
     echo "Firma del manifiesto: NO VALE. No te fíes de este manifiesto." >&2

@@ -30,15 +30,42 @@ una conexión lenta, unos minutos). Hace falta curl y python3.
 
 - `versiones/<versión>.json`: el manifiesto. `commit` y `etiqueta` en el
   repositorio de Nook; `imagen` (por digest) y `config` (el id de la imagen);
-  `build`, la compilación de la web que se ve en Ajustes › General; `web`,
-  ruta → SHA-256 de cada fichero tal como se sirve; `agente`, la versión y
-  el SHA-256 de `/agente/nook-agent.mjs`.
+  `compose`, el SHA-256 de su `compose.yaml` (desde la 0.1.32); `build`, la
+  compilación de la web que se ve en Ajustes › General; `web`, ruta →
+  SHA-256 de cada fichero tal como se sirve; `agente`, la versión y el
+  SHA-256 de `/agente/nook-agent.mjs`.
 - `versiones/<versión>.json.sigstore.json`: su firma, un bundle de cosign,
   también en el registro público de transparencia de Sigstore (Rekor).
-- `cosign.pub`: la clave pública con que se firman los manifiestos y las
-  imágenes.
+- `cosign.pub`: la clave pública de quien publica, con que se firmaron los
+  manifiestos y las imágenes hasta la 0.1.31.
+
+## Quién firma
+
+Desde la 0.1.32 firma la CI de Nook, sin clave: cosign firma con la identidad
+de la ejecución de GitHub Actions que construyó la imagen, y Sigstore da un
+certificado para esa identidad. Se comprueba que sea exactamente
+
+```text
+https://github.com/KaiCorpLabs/nook/.github/workflows/docker.yml@refs/tags/v<versión>
+```
+
+con el emisor `https://token.actions.githubusercontent.com`. Hasta la 0.1.31
+firmaba quien publica, con la clave de `cosign.pub`; la clave sigue de reserva
+por si la CI no puede, y `comprobar.sh` acepta las dos (el bundle dice cuál
+es).
 
 ## Comprobar a mano
+
+Una versión firmada por la CI (desde la 0.1.32):
+
+```bash
+cosign verify-blob --bundle versiones/0.1.32.json.sigstore.json \
+  --certificate-identity https://github.com/KaiCorpLabs/nook/.github/workflows/docker.yml@refs/tags/v0.1.32 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  versiones/0.1.32.json
+```
+
+Una firmada con la clave (hasta la 0.1.31):
 
 ```bash
 cosign verify-blob --key cosign.pub \
@@ -46,10 +73,13 @@ cosign verify-blob --key cosign.pub \
 ```
 
 La firma de la imagen va en el registro, junto a ella (de momento el paquete
-es privado: hace falta acceso a él para comprobarla):
+es privado: hace falta acceso a él para comprobarla). Con las mismas
+opciones, o `--key cosign.pub` hasta la 0.1.31:
 
 ```bash
-cosign verify --key cosign.pub ghcr.io/kaicorplabs/nook@sha256:<digest del manifiesto>   # hasta la 0.1.28, ghcr.io/ulzuhan/nook
+cosign verify --certificate-identity https://github.com/KaiCorpLabs/nook/.github/workflows/docker.yml@refs/tags/v<versión> \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/kaicorplabs/nook@sha256:<digest del manifiesto>   # hasta la 0.1.28, ghcr.io/ulzuhan/nook
 ```
 
 Los ficheros de la web, uno a uno: `curl -s https://<Nook>/<ruta> | shasum -a 256`
@@ -58,11 +88,19 @@ recompilarla desde su commit da los mismos bytes.
 
 ## Cómo se publica una versión
 
-1. La imagen se construye desde la etiqueta y se sube a GHCR; se apunta su
-   digest.
-2. En el repositorio de Nook, `node scripts/manifiesto.mjs <versión> <imagen@digest>`
-   mide la imagen misma (`nook huellas`, el SHA-256 de lo que lleva dentro).
-3. Quien tiene la clave firma el manifiesto y la imagen con cosign, y el
-   manifiesto llega aquí **antes** de desplegar la versión.
+Todo en la CI de Nook, con la etiqueta `v<versión>`:
+
+1. La imagen se construye desde la etiqueta, pasa Trivy y se sube a GHCR.
+2. `scripts/manifiesto.mjs` mide la imagen subida (`nook huellas`, el SHA-256
+   de lo que lleva dentro).
+3. cosign firma el manifiesto y la imagen sin clave, y la CI comprueba las
+   dos firmas con la identidad de arriba.
+4. Una app de la organización, que solo puede escribir aquí, abre la PR con
+   el manifiesto y su firma. No puede juntarla: `main` pide una aprobación, y
+   la PR la junta una persona.
+
+Juntarla publica la versión, y el manifiesto llega aquí **antes** de
+desplegarla: nook.kaicorplabs.com se despliega solo cuando ve en `main` una
+versión más nueva que la suya, después de comprobar él mismo la firma.
 
 Los manifiestos y `comprobar.sh` son de dominio público (CC0).
